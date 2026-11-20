@@ -1,5 +1,7 @@
+
 server:
   port: ${PORT:${SERVER_PORT:8080}}
+  address: 0.0.0.0
   error:
     include-message: never
 
@@ -7,18 +9,22 @@ spring:
   application:
     name: institution-directory
 
-  # Optional local .env support when Spring Boot starts from the backend folder.
-  # External environment variables can still override these values.
+  # Optional .env support for local development
   config:
     import: "optional:file:./.env[.properties]"
 
+  # PostgreSQL database
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
+      minimum-idle: 1
+      connection-timeout: 30000
 
+  # Hibernate / JPA
   jpa:
     open-in-view: false
     hibernate:
@@ -28,31 +34,35 @@ spring:
         jdbc:
           time_zone: UTC
 
+  # Database migrations
   flyway:
     enabled: true
     locations: classpath:db/migration
 
+  # JSON validation
   jackson:
     deserialization:
       fail-on-unknown-properties: true
 
 app:
+  # React frontend origin
   frontend-origin: ${FRONTEND_ORIGIN}
 
+  # JWT authentication
   jwt:
     secret-base64: ${JWT_SECRET_BASE64}
     issuer: institution-directory
     access-seconds: ${JWT_ACCESS_SECONDS:900}
 
+  # Refresh token configuration
   refresh:
     days: 7
-    # Defaults to secure cookies; set COOKIE_SECURE=false ONLY for local HTTP.
     cookie-secure: ${COOKIE_SECURE:true}
 
+  # Initial admin setup
   setup:
-    # Must be set before the first admin account can be created.
     key: ${ADMIN_SETUP_KEY:}
 
+  # PDF export font
   pdf:
-    # Leave empty for automatic font selection, or set a Windows .ttf file path.
     font-path: ${PDF_FONT_PATH:}
