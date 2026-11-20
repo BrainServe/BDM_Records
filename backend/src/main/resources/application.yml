@@ -13,7 +13,7 @@ spring:
     import: "optional:file:./.env[.properties]"
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/institution_directory}
+    url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     hikari:
@@ -37,7 +37,7 @@ spring:
       fail-on-unknown-properties: true
 
 app:
-  frontend-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+  frontend-origin: ${FRONTEND_ORIGIN}
 
   jwt:
     secret-base64: ${JWT_SECRET_BASE64}
