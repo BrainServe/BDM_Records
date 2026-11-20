@@ -1,0 +1,119 @@
+name: Verify full stack
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # A genuine lockfile must be generated on a networked machine and committed.
+      # Transitional CI generates the exact resolved tree and then installs it via npm ci.
+      - name: Resolve and validate package lock
+        working-directory: frontend
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install exact resolved frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resolved-frontend-lockfile
+          path: frontend/package-lock.json
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Run dependency audit
+        working-directory: frontend
+        run: npm audit --audit-level=high
+  backend-and-api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: directory_user
+          POSTGRES_PASSWORD: ci-only-test-password
+          POSTGRES_DB: institution_directory
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U directory_user -d institution_directory"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DB_URL: jdbc:postgresql://localhost:5432/institution_directory
+      DB_USERNAME: directory_user
+      DB_PASSWORD: ci-only-test-password
+      JWT_SECRET_BASE64: YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU2Nzg5QUJDREVGR0hJSktMTU5PUA==
+      ADMIN_SETUP_KEY: ci-only-initial-admin-key-not-for-production
+      FRONTEND_ORIGIN: http://localhost:5173
+      COOKIE_SECURE: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve locked browser dependencies
+        working-directory: frontend
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --no-audit --no-fund
+      - name: Install Chromium for real browser tests
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Compile and test backend (JWT, setup, PDF)
+        working-directory: backend
+        run: mvn -B verify
+      - name: Start app in background
+        working-directory: backend
+        run: |
+          nohup mvn -B spring-boot:run >/tmp/directory-backend.log 2>&1 &
+          echo $! >/tmp/directory-backend.pid
+          for i in $(seq 1 100); do
+            if curl -fsS http://localhost:8080/api/auth/status >/dev/null; then break; fi
+            if [ "$i" = 100 ]; then cat /tmp/directory-backend.log; exit 1; fi
+            sleep 2
+          done
+      - name: Complete initial admin setup on ephemeral database
+        run: |
+          curl -fsS --fail-with-body -X POST http://localhost:8080/api/auth/setup \
+            -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' \
+            -d '{"username":"ciadmin","password":"CiTestPassword!2026","setupKey":"ci-only-initial-admin-key-not-for-production"}'
+      - name: Exercise live API CRUD, security, refresh and PDF
+        run: node scripts/smoke-test.mjs
+        env:
+          SMOKE_USERNAME: ciadmin
+          SMOKE_PASSWORD: CiTestPassword!2026
+      - name: "Test real browser workflows: desktop, mobile, CRUD, auth, CSV, PDF"
+        working-directory: frontend
+        env:
+          E2E_USERNAME: ciadmin
+          E2E_PASSWORD: CiTestPassword!2026
+        run: npm run test:e2e
+      - name: Upload browser traces and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-results
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          if-no-files-found: ignore
+      - name: Print backend logs if checks fail
+        if: failure()
+        run: cat /tmp/directory-backend.log || true

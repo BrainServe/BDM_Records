@@ -1,0 +1,1 @@
+package com.example.directory.repo; import com.example.directory.model.CatalogItem; import org.springframework.data.jpa.repository.JpaRepository; import java.util.UUID; public interface CatalogItemRepository extends JpaRepository<CatalogItem,UUID> {}
