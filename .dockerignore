@@ -1,0 +1,15 @@
+# Never send local credentials or compiled artifacts to the remote build.
+.git
+.gitignore
+**/.env
+.env
+**/*.log
+**/node_modules
+**/dist
+**/target
+**/.idea
+**/.vscode
+**/playwright-report
+**/test-results
+**/coverage
+*.zip
