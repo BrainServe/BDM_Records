@@ -91,7 +91,7 @@ jobs:
           done
       - name: Complete initial admin setup on ephemeral database
         run: |
-          curl -fsS --fail-with-body -X POST http://localhost:8080/api/auth/setup \
+          curl -sS --fail-with-body -X POST http://localhost:8080/api/auth/setup \
             -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' \
             -d '{"username":"ciadmin","password":"CiTestPassword!2026","setupKey":"ci-only-initial-admin-key-not-for-production"}'
       - name: Exercise live API CRUD, security, refresh and PDF
