@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {
-  ArrowRight, Check, CheckCheck, ChevronRight,
+  ArrowLeft, ArrowRight, Check, CheckCheck, ChevronRight,
   Columns3, Database, FileDown, FileText, FolderKanban, GraduationCap, LayoutDashboard, Landmark, LockKeyhole,
   LogOut, MoreHorizontal, Pencil, Plus, Printer, Save, Search, Settings2, ShieldCheck, 
   Trash2, Users, X, Eye, EyeOff, Menu, Layers3, AlertTriangle, RefreshCw
@@ -146,6 +146,13 @@ function ManageColumns({matrix,onEdit,onRemove,onRemoveMultiple,onAdd}) {
  </div>;
 }
 function formatCount(n) {return n.toLocaleString('en-IN');}
+// Sorting money must not round DECIMAL(16,2) through JavaScript Number.
+function amountCents(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const [whole, fraction = ''] = String(value).trim().split('.');
+  return BigInt(whole || '0') * 100n + BigInt((fraction + '00').slice(0, 2));
+}
+
 function Dashboard({username,onLogout}){
  const [sections,setSections]=useState([]),[selectedId,setSelectedId]=useState(null),[matrix,setMatrix]=useState(null);
  const [loading,setLoading]=useState(true),[matrixLoading,setMatrixLoading]=useState(false),[search,setSearch]=useState('');
@@ -158,6 +165,13 @@ function Dashboard({username,onLogout}){
  const [multiSelected,setMultiSelected]=useState([]),[bulkEdit,setBulkEdit]=useState(false),[drafts,setDrafts]=useState({}),[gridSaving,setGridSaving]=useState(false);
  const gridSavingRef=useRef(false);
  const [mobileNav,setMobileNav]=useState(false),[mobileTableView,setMobileTableView]=useState(false),[sort,setSort]=useState('name'),[showMenu,setShowMenu]=useState(false);
+ const [mobileSelectedRecordId,setMobileSelectedRecordId]=useState(null);
+ const [mobileCourseSearch,setMobileCourseSearch]=useState('');
+ const [mobileCourseSort,setMobileCourseSort]=useState('name');
+ const [mobileCourseLimit,setMobileCourseLimit]=useState(5);
+ function openMobileRecord(id){setMobileSelectedRecordId(id);setMobileCourseSearch('');setMobileCourseSort('name');setMobileCourseLimit(5);setMobileTableView(false);}
+ function closeMobileRecord(){setMobileSelectedRecordId(null);setMobileCourseSearch('');setMobileCourseLimit(5);}
+
  const notify=(message,type='success')=>setToast({message,type,key:Date.now()});
  useEffect(()=>{if(!showMenu)return;const onOutside=e=>{if(e.key==='Escape'||(e.type==='pointerdown'&&!e.target.closest('.menu-parent')))setShowMenu(false);};document.addEventListener('pointerdown',onOutside);document.addEventListener('keydown',onOutside);return()=>{document.removeEventListener('pointerdown',onOutside);document.removeEventListener('keydown',onOutside);};},[showMenu]);
  useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(null),4400);return()=>clearTimeout(t);},[toast]);
@@ -187,7 +201,7 @@ function Dashboard({username,onLogout}){
  useEffect(()=>{
    currentSectionRef.current=selectedId;
    const request=++matrixRequestRef.current;
-   setMatrix(null);setMatrixError('');setSearch('');setMultiSelected([]);setBulkEdit(false);setDrafts({});setPage(1);setMobileTableView(false);
+   setMatrix(null);setMatrixError('');setSearch('');setMultiSelected([]);setBulkEdit(false);setDrafts({});setPage(1);setMobileTableView(false);setMobileSelectedRecordId(null);setMobileCourseSearch('');setMobileCourseLimit(5);
    if(!selectedId)return;
    let alive=true;setMatrixLoading(true);
    api(`/sections/${selectedId}/matrix`).then(v=>{if(alive&&matrixRequestRef.current===request)setMatrix(v);})
@@ -204,6 +218,29 @@ function Dashboard({username,onLogout}){
  },[matrix,search,sort]);
  const pagination=useMemo(()=>paginateRows(filtered,page,pageSize),[filtered,page,pageSize]);
  const shownRows=printAll?filtered:pagination.rows;
+ // Mobile detail follows a record ID so it stays correct after edits and reloads.
+ const mobileRecord=matrix?.rows.find(r=>r.id===mobileSelectedRecordId)??null;
+ const mobileCourses=useMemo(()=>{
+   if(!matrix||!mobileRecord)return[];
+   const query=mobileCourseSearch.trim().toLocaleLowerCase();
+   const courses=matrix.columns.filter(c=>c.name.toLocaleLowerCase().includes(query));
+   courses.sort((a,b)=>{
+     if(mobileCourseSort==='name')return a.name.localeCompare(b.name)||a.id.localeCompare(b.id);
+     const valueA=amountCents(mobileRecord.values[a.id]);
+     const valueB=amountCents(mobileRecord.values[b.id]);
+     // Unpriced courses follow priced courses in both directions.
+     if(valueA===null||valueB===null)return valueA===null?valueB===null?0:1:-1;
+     const comparison=valueA<valueB?-1:valueA>valueB?1:0;
+     return (mobileCourseSort==='low'?comparison:-comparison)||a.name.localeCompare(b.name);
+   });
+   return courses;
+ },[matrix,mobileRecord,mobileCourseSearch,mobileCourseSort]);
+ const visibleMobileCourses=mobileCourses.slice(0,mobileCourseLimit);
+ useEffect(()=>{
+   // Deleted or moved institutes must not leave a stale detail screen.
+   if(matrix&&mobileSelectedRecordId&&!matrix.rows.some(r=>r.id===mobileSelectedRecordId))closeMobileRecord();
+ },[matrix,mobileSelectedRecordId]);
+
  useEffect(()=>{setPage(current=>Math.min(current,pagination.pageCount));},[pagination.pageCount]);
  useEffect(()=>{if(!printAll)return;const reset=()=>setPrintAll(false);window.addEventListener('afterprint',reset);return()=>window.removeEventListener('afterprint',reset);},[printAll]);
  const populated=matrix?.rows.reduce((sum,r)=>sum+Object.keys(r.values).length,0)||0;
@@ -310,38 +347,55 @@ function Dashboard({username,onLogout}){
          {section&&<>
            <div className="section-overview"><div><div className="section-kicker"> CURRENT SECTION</div><h2>{section.name}</h2><p>Manage {labelPlural(section.recordLabel).toLowerCase()}, {labelPlural(section.itemLabel).toLowerCase()}, and their associated amounts.</p></div><div className="overview-actions"><Button variant="secondary" icon={Settings2} disabled={bulkEdit} onClick={()=>setModal({type:'manageSection'})}>Section settings</Button></div></div>
            <div className="stats-grid"><div className="stat"><div className="stat-icon blue"><Users size={20}/></div><div><span>{labelPlural(section.recordLabel)}</span><strong>{formatCount(matrix?.rows.length ?? section.recordCount)}</strong></div></div><div className="stat"><div className="stat-icon amber"><Columns3 size={20}/></div><div><span>{labelPlural(section.itemLabel)}</span><strong>{formatCount(matrix?.columns.length ?? section.itemCount)}</strong></div></div><div className="stat"><div className="stat-icon emerald"><CheckCheck size={20}/></div><div><span>Amounts recorded</span><strong>{formatCount(populated)}</strong></div></div></div>
-           <div className={`directory-panel${mobileTableView?' mobile-table-mode':''}`}><div className="panel-head"><div><h3>{section.recordLabel} directory</h3><p>Edit individual amounts or switch to full-table editing.</p></div><div className="panel-actions"><Button icon={Plus} disabled={bulkEdit} onClick={()=>setModal({type:'record',mode:'add'})}>Add {section.recordLabel}</Button><Button variant="secondary" icon={Plus} disabled={bulkEdit} onClick={()=>setModal({type:'item'})}>Add {section.itemLabel}</Button></div></div>
+           <div className={`directory-panel${mobileTableView?' mobile-table-mode':''}${mobileSelectedRecordId&&mobileRecord?' mobile-detail-active':''}`}><div className="panel-head"><div><h3>{section.recordLabel} directory</h3><p>Edit individual amounts or switch to full-table editing.</p></div><div className="panel-actions"><Button icon={Plus} disabled={bulkEdit} onClick={()=>setModal({type:'record',mode:'add'})}>Add {section.recordLabel}</Button><Button variant="secondary" icon={Plus} disabled={bulkEdit} onClick={()=>setModal({type:'item'})}>Add {section.itemLabel}</Button></div></div>
              <div className="grid-toolbar"><div className="search-wrap"><Search size={17}/><input placeholder={`Search ${labelPlural(section.recordLabel).toLowerCase()}…`} value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} aria-label="Search records"/></div>
                <div className="grid-toolbar-right"><select className="sort-select" value={sort} aria-label="Sort rows" onChange={e=>{setSort(e.target.value);setPage(1);}}><option value="name">Name A–Z</option><option value="created">Creation order</option></select><Button variant="toolbar" icon={FileText} onClick={exportPDF} disabled={pdfBusy||!matrix}>{pdfBusy?'Exporting…':'Export PDF'}</Button><span className="record-indicator">{filtered.length} {filtered.length===1?'record':'records'}</span><div className="toolbar-divider"/>
                {bulkEdit?<><Button variant="ghost" disabled={gridSaving} onClick={()=>{setBulkEdit(false);setDrafts({});}}>Cancel edit</Button><Button icon={Save} disabled={gridSaving||changes.length===0} onClick={saveBulk}>{gridSaving?'Saving grid…':`Save ${changes.length} change${changes.length===1?'':'s'}`}</Button></>:<><Button variant="toolbar" icon={Pencil} disabled={!matrix?.rows.length||!matrix?.columns.length} onClick={beginBulk}>Edit grid</Button><Button variant="toolbar" icon={Columns3} onClick={()=>setModal({type:'columns'})}>Columns</Button></>}
                <div className="menu-parent"><button className="toolbar-icon" aria-label="More actions" onClick={()=>setShowMenu(s=>!s)}><MoreHorizontal size={20}/></button>{showMenu&&<div className="action-menu"><button onClick={()=>{exportCurrentCSV();setShowMenu(false);}}><FileDown size={16}/> Export CSV</button><button onClick={()=>{exportPDF();setShowMenu(false);}}><FileText size={16}/> Export PDF</button><button onClick={()=>{printDirectory();setShowMenu(false);}}><Printer size={16}/> Print table</button><button disabled={bulkEdit} onClick={()=>{setModal({type:'manageSection'});setShowMenu(false);}}><Settings2 size={16}/> Manage section</button></div>}</div>
                </div></div>
-             {matrix && matrix.rows.length>0 && !matrixError && !busy && <div className="mobile-view-switch" role="group" aria-label="Mobile directory view">
-               <span className="mobile-view-label">Directory view</span>
+             {matrix && matrix.rows.length>0 && !matrixError && !busy && !mobileSelectedRecordId && <div className="mobile-view-switch" role="group" aria-label="Mobile directory view">
+               <div className="mobile-view-heading"><strong>{labelPlural(section.recordLabel)}</strong><span>{formatCount(filtered.length)} found</span></div>
                <div className="mobile-view-buttons">
-                 <button type="button" aria-pressed={!mobileTableView} className={!mobileTableView?'active':''} onClick={()=>setMobileTableView(false)}>Cards</button>
+                 <button type="button" aria-pressed={!mobileTableView} className={!mobileTableView?'active':''} onClick={()=>setMobileTableView(false)}>List</button>
                  <button type="button" aria-pressed={mobileTableView} className={mobileTableView?'active':''} onClick={()=>setMobileTableView(true)}>Table</button>
                </div>
              </div>}
              {selectedCount>0&&<div className="selection-bar"><span><CheckCheck size={18}/>{selectedCount} selected</span><div><Button variant="toolbar" icon={X} onClick={()=>setMultiSelected([])}>Deselect</Button><Button variant="toolbar" icon={Trash2} disabled={bulkEdit} onClick={clearSelectedValues}>Clear values</Button><Button variant="danger" icon={Trash2} disabled={bulkEdit} onClick={deleteSelected}>Delete rows</Button></div></div>}
              {matrixError?<div className="table-loading load-error"><AlertTriangle size={19}/>Could not load table: {matrixError}<Button variant="secondary" icon={RefreshCw} onClick={()=>reloadMatrix().catch(e=>notify(e.message,'error'))}>Retry</Button></div>:busy||!matrix?<div className="table-loading"><RefreshCw className="spin"/> Loading directory…</div>:matrix.rows.length===0?<div className="table-empty"><div className="table-empty-icon"><Users size={23}/></div><h4>No {labelPlural(section.recordLabel).toLowerCase()} yet</h4><p>Add your first {section.recordLabel.toLowerCase()} to get started. No sample records are preloaded.</p><Button icon={Plus} onClick={()=>setModal({type:'record',mode:'add'})}>Add {section.recordLabel}</Button></div>:<>
-               <div className="mobile-record-cards" aria-label={`${labelPlural(section.recordLabel)} and their ${labelPlural(section.itemLabel).toLowerCase()}`}>
-                 {filtered.length===0?<p className="mobile-record-empty">No records match “{search}”.</p>:shownRows.map((r,i)=><article key={r.id} className={`mobile-record-card${multiSelected.includes(r.id)?' mobile-record-selected':''}`}>
-                   <div className="mobile-card-header">
+               <div className="mobile-institute-explorer" aria-label={`${labelPlural(section.recordLabel)} mobile browser`}>
+                 {!mobileRecord?<div className="mobile-institute-list">
+                   {filtered.length===0?<p className="mobile-record-empty">No {labelPlural(section.recordLabel).toLowerCase()} match “{search}”.</p>:shownRows.map((r,i)=><article key={r.id} className={`mobile-institute-item${multiSelected.includes(r.id)?' mobile-institute-selected':''}`}>
                      <input type="checkbox" aria-label={`Select ${r.name}`} checked={multiSelected.includes(r.id)} onChange={e=>setMultiSelected(previous=>e.target.checked?[...previous,r.id]:previous.filter(id=>id!==r.id))}/>
-                     <div className="mobile-card-identity"><span className="record-avatar" aria-hidden="true">{r.name.charAt(0).toUpperCase()}</span><div className="mobile-card-name"><span className="mobile-card-number">#{pagination.start+i+1} · {section.recordLabel}</span><strong title={r.name}>{r.name}</strong></div></div>
-                     <div className="mobile-card-actions">
-                       <button type="button" aria-label={`Edit ${r.name}`} disabled={bulkEdit} onClick={()=>setModal({type:'record',mode:'edit',row:r})}><Pencil size={16}/></button>
-                       <button type="button" className="danger-text" aria-label={`Delete ${r.name}`} disabled={bulkEdit} onClick={()=>deleteRow(r)}><Trash2 size={16}/></button>
-                     </div>
+                     <button type="button" className="mobile-institute-open" aria-label={`View ${labelPlural(section.itemLabel).toLowerCase()} for ${r.name}`} onClick={()=>openMobileRecord(r.id)}>
+                       <span className="record-avatar" aria-hidden="true">{r.name.charAt(0).toUpperCase()}</span>
+                       <span className="mobile-institute-info"><strong>{r.name}</strong><small>{formatCount(matrix.columns.length)} {matrix.columns.length===1?section.itemLabel.toLowerCase():labelPlural(section.itemLabel).toLowerCase()} · {formatCount(Object.values(r.values).filter(v=>v!==null&&v!==undefined&&v!=='').length)} amounts</small></span>
+                       <ChevronRight size={19} aria-hidden="true"/>
+                     </button>
+                   </article>)}
+                 </div>:<section className="mobile-course-detail" aria-label={`${labelPlural(section.itemLabel)} for ${mobileRecord.name}`}>
+                   <button type="button" className="mobile-detail-back" aria-label={`Back to ${labelPlural(section.recordLabel).toLowerCase()}`} onClick={closeMobileRecord}><ArrowLeft size={18}/>{labelPlural(section.recordLabel)}</button>
+                   <div className="mobile-detail-head">
+                     <span className="record-avatar" aria-hidden="true">{mobileRecord.name.charAt(0).toUpperCase()}</span>
+                     <div className="mobile-detail-identity"><h4>{mobileRecord.name}</h4><span>{formatCount(matrix.columns.length)} {matrix.columns.length===1?section.itemLabel.toLowerCase():labelPlural(section.itemLabel).toLowerCase()} available</span></div>
                    </div>
-                   <div className="mobile-card-fields">
-                     {matrix.columns.length===0?<p className="mobile-card-no-columns">No {labelPlural(section.itemLabel).toLowerCase()} added yet.</p>:matrix.columns.map(c=><div className="mobile-card-field" key={c.id}>
-                       <span className="mobile-card-field-label" title={c.name}>{c.name}</span>
-                       <div className="mobile-card-field-value">{bulkEdit?<input className="bulk-cell-input" disabled={gridSaving} maxLength={22} aria-label={`${r.name} ${c.name} amount`} value={drafts[`${r.id}:${c.id}`]??''} inputMode="decimal" onChange={e=>setDrafts(previous=>({...previous,[`${r.id}:${c.id}`]:e.target.value}))}/>:<InlineCell value={r.values[c.id]} unit={section.amountUnit} onSave={v=>singleCell(r,c,v)}/>}</div>
+                   <div className="mobile-detail-actions">
+                     <button type="button" disabled={bulkEdit} onClick={()=>setModal({type:'record',mode:'edit',row:mobileRecord})}><Pencil size={15}/> Edit {section.recordLabel}</button>
+                     <button type="button" className="mobile-detail-danger" disabled={bulkEdit} onClick={()=>deleteRow(mobileRecord)} aria-label={`Delete ${mobileRecord.name}`}><Trash2 size={15}/> Delete</button>
+                   </div>
+                   <div className="mobile-course-controls">
+                     <label htmlFor="mobile-course-search">Search {labelPlural(section.itemLabel).toLowerCase()}</label>
+                     <div className="mobile-course-search"><Search size={17}/><input id="mobile-course-search" aria-label={`Search ${labelPlural(section.itemLabel).toLowerCase()}`} placeholder={`Search ${labelPlural(section.itemLabel).toLowerCase()}...`} value={mobileCourseSearch} onChange={e=>{setMobileCourseSearch(e.target.value);setMobileCourseLimit(5);}} /></div>
+                     <div className="mobile-course-filter-row"><span>{formatCount(mobileCourses.length)} matching {labelPlural(section.itemLabel).toLowerCase()}</span><label>Sort <select aria-label={`Sort ${labelPlural(section.itemLabel).toLowerCase()}`} value={mobileCourseSort} onChange={e=>{setMobileCourseSort(e.target.value);setMobileCourseLimit(5);}}><option value="name">Name A–Z</option><option value="low">Amount: low to high</option><option value="high">Amount: high to low</option></select></label></div>
+                   </div>
+                   <div className="mobile-course-list" aria-live="polite">
+                     {visibleMobileCourses.length===0?<p className="mobile-course-empty">{matrix.columns.length===0?`No ${labelPlural(section.itemLabel).toLowerCase()} yet. Use Add ${section.itemLabel} to create one.`:`No ${labelPlural(section.itemLabel).toLowerCase()} match this search.`}</p>:visibleMobileCourses.map(c=><div key={c.id} className="mobile-course-row" data-course-id={c.id}>
+                       <div className="mobile-course-main"><strong>{c.name}</strong><span>{section.itemLabel}</span></div>
+                       <div className="mobile-course-amount">{bulkEdit?<input className="bulk-cell-input" disabled={gridSaving} maxLength={22} aria-label={`${mobileRecord.name} ${c.name} amount`} value={drafts[`${mobileRecord.id}:${c.id}`]??''} inputMode="decimal" onChange={e=>setDrafts(previous=>({...previous,[`${mobileRecord.id}:${c.id}`]:e.target.value}))}/>:<InlineCell value={mobileRecord.values[c.id]} unit={section.amountUnit} onSave={v=>singleCell(mobileRecord,c,v)}/>}</div>
                      </div>)}
                    </div>
-                 </article>)}
+                   {mobileCourses.length>mobileCourseLimit&&<button type="button" className="mobile-course-more" onClick={()=>setMobileCourseLimit(n=>n+5)}>Show more ({formatCount(mobileCourses.length-mobileCourseLimit)} remaining) <ChevronRight size={15}/></button>}
+                   <p className="mobile-course-instruction">Tap an amount to edit it. Changes are saved to your directory.</p>
+                 </section>}
                </div>
                <p className="mobile-table-hint">Swipe horizontally to see all courses and row actions.</p>
                <div className="table-scroll" role="region" tabIndex={0} aria-label={`${section.recordLabel} directory table; scroll horizontally for more ${labelPlural(section.itemLabel).toLowerCase()}`}><table className="matrix-table"><thead><tr>
@@ -354,7 +408,7 @@ function Dashboard({username,onLogout}){
                </table></div></>}
              <div className="panel-footer directory-footer">
                <div className="pagination-summary"><span>Showing {pagination.total===0?0:pagination.start+1}–{pagination.end} of {pagination.total} matching {labelPlural(section.recordLabel).toLowerCase()}</span><span className="total-records">· {matrix?.rows.length||0} total</span></div>
-               <div className="pagination-toolbar" role="navigation" aria-label="Table pagination">
+               <div className={`pagination-toolbar${pagination.pageCount===1?' pagination-single-page':''}`} role="navigation" aria-label="Table pagination">
                  <label className="rows-per-page">Rows per page <select aria-label="Rows per page" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1);}}>{PAGE_SIZE_OPTIONS.map(size=><option key={size} value={size}>{size}</option>)}</select></label>
                  <button className="pager-btn" aria-label="First page" disabled={pagination.page===1} onClick={()=>setPage(1)}>«</button>
                  <button className="pager-btn" aria-label="Previous page" disabled={pagination.page===1} onClick={()=>setPage(pagination.page-1)}>‹</button>
