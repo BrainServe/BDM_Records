@@ -2251,3 +2251,170 @@ input:focus,select:focus {
 .save-status {display:flex;align-items:center;gap:5px;color:#637082;font-size:11px;white-space:nowrap;}
 @media(max-width:720px){.directory-footer{align-items:flex-start;flex-direction:column;gap:10px}.pagination-toolbar{justify-content:flex-start;max-width:100%}.save-status{white-space:normal}}
 @media print {.pagination-toolbar,.pagination-summary,.save-status{display:none !important}.directory-footer{display:none !important}}
+
+
+/* --------------------------------------------------------------------------
+   Mobile directory: clear branding, accessible record cards, optional table.
+   All breakpoints are additive: desktop table, print and APIs remain intact.
+   -------------------------------------------------------------------------- */
+.mobile-view-switch, .mobile-record-cards, .mobile-table-hint {
+  display: none;
+}
+@media (max-width: 720px) {
+  /* The previous font-size:0 left the Administrator pill and icon consuming
+     space next to the wordmark. Keep exactly 3 visual items: menu/logo/avatar. */
+  .topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    height: 64px;
+    padding-inline: 16px;
+  }
+  .topbar .crumb {
+    min-width: 0;
+    width: 100%;
+    gap: 12px;
+    overflow: hidden;
+  }
+  .topbar .mobile-menu {
+    display: inline-flex;
+    flex: 0 0 38px;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 7px;
+  }
+  .topbar .mobile-home-brand {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .topbar .brand-identity-mobile {
+    flex-shrink: 1;
+    min-width: 0;
+    gap: 7px;
+  }
+  .topbar .brand-identity-mobile .brainserve-mark {
+    flex: 0 0 26px;
+    width: 26px;
+    height: 26px;
+  }
+  .topbar .brand-identity-mobile .brainserve-wordmark {
+    display: block;
+    height: 19px;
+    width: auto;
+    max-width: min(32vw, 132px);
+    object-fit: contain;
+  }
+  .topbar .desktop-breadcrumb,
+  .topbar .topbar-right .session-pill {
+    display: none !important;
+  }
+  .topbar .topbar-right {gap: 0; flex-shrink: 0;}
+  .topbar .mini-avatar {width: 35px; height: 35px;}
+
+  /* Make the controls scan naturally: search, filters, then actions. */
+  .directory-panel {min-width: 0; max-width: 100%;}
+  .directory-panel .grid-toolbar {display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; padding: 13px;}
+  .directory-panel .search-wrap {width: 100%; max-width: none; min-width: 0; flex-basis: auto;}
+  .directory-panel .grid-toolbar-right {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
+  .directory-panel .sort-select {width: 100%; min-width: 0; max-width: none;}
+  .directory-panel .grid-toolbar-right .btn {width: 100%; min-width: 0; margin: 0; padding: 8px 7px;}
+  .directory-panel .grid-toolbar-right .toolbar-divider {display: none;}
+  .directory-panel .grid-toolbar-right .record-indicator {justify-self: end; margin: 0; color: #65717b; font-size: 11px;}
+  .directory-panel .grid-toolbar-right .menu-parent {justify-self: end;}
+  .directory-panel .grid-toolbar-right .toolbar-icon {width: 38px; height: 38px;}
+
+  /* Card view shows ALL course columns and amounts without horizontal clipping. */
+  .mobile-view-switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px 2px;
+  }
+  .mobile-view-label {color: #566475; font-size: 12px; font-weight: 650;}
+  .mobile-view-buttons {display: inline-flex; padding: 3px; gap: 3px; border: 1px solid #e1e5ea; background: #f5f6f8; border-radius: 8px;}
+  .mobile-view-buttons button {border: 0; border-radius: 6px; background: transparent; padding: 8px 14px; color: #596577; font-size: 12px; font-weight: 650;}
+  .mobile-view-buttons button.active {background: #fff; color: #af2631; box-shadow: 0 1px 4px #18212c1a;}
+  .mobile-view-buttons button:focus-visible {outline: 2px solid #bd364a; outline-offset: 2px;}
+  .mobile-record-cards {display: grid; gap: 11px; padding: 12px 13px 14px; min-width: 0;}
+  .mobile-record-card {min-width: 0; border: 1px solid #e1e6eb; border-radius: 11px; background: #fff; overflow: hidden;}
+  .mobile-record-card.mobile-record-selected {border-color: #d17e84; background: #fffafa;}
+  .mobile-card-header {display: flex; align-items: center; gap: 10px; padding: 12px; min-width: 0;}
+  .mobile-card-header>input[type=checkbox] {flex: 0 0 auto; width: 17px; height: 17px; accent-color: #c62f39;}
+  .mobile-card-identity {display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1 1 auto;}
+  .mobile-card-identity .record-avatar {width: 32px; height: 32px; flex: 0 0 32px; display: grid; place-items: center;}
+  .mobile-card-name {min-width: 0; display: grid; gap: 3px;}
+  .mobile-card-name strong {font-size: 13px; font-weight: 690; color: #263442; overflow-wrap: anywhere;}
+  .mobile-card-number {color: #7b8792; font-size: 10px; font-weight: 550;}
+  .mobile-card-actions {display: inline-flex; flex: 0 0 auto; gap: 2px; align-items: center;}
+  .mobile-card-actions button {display: grid; place-items: center; width: 34px; height: 34px; border: 0; background: #f6f8fa; color: #53738f; border-radius: 7px;}
+  .mobile-card-actions button.danger-text {color: #c62f39; background: #fff5f5;}
+  .mobile-card-actions button:disabled {opacity: .42;}
+  .mobile-card-fields {border-top: 1px solid #e9edf1; background: #fcfcfd;}
+  .mobile-card-field {display: grid; grid-template-columns: minmax(0, 1fr) minmax(110px, 45%); align-items: center; gap: 12px; padding: 11px 13px; border-bottom: 1px solid #edf0f3; min-width: 0;}
+  .mobile-card-field:last-child {border-bottom: 0;}
+  .mobile-card-field-label {min-width: 0; font-size: 12px; color: #566475; font-weight: 580; overflow-wrap: anywhere;}
+  .mobile-card-field-value {min-width: 0; display: flex; justify-content: flex-end;}
+  .mobile-card-field-value .cell-value {width: auto; min-width: 44px; min-height: 33px; padding: 6px 9px; justify-content: flex-end;}
+  .mobile-card-field-value .cell-pencil {opacity: 1;}
+  .mobile-card-field-value .bulk-cell-input {max-width: 100%;}
+  .mobile-card-no-columns,.mobile-record-empty {padding: 16px; margin: 0; font-size: 12px; color: #677482;}
+  .directory-panel:not(.mobile-table-mode) .table-scroll {display: none;}
+
+  /* Table view is still available: horizontal scrolling without right-side
+     sticky Actions covering the amount columns, even at 320px widths. */
+  .directory-panel.mobile-table-mode .mobile-record-cards {display: none;}
+  .directory-panel.mobile-table-mode .mobile-table-hint {display: block; margin: 8px 14px; color: #647587; font-size: 11px;}
+  .directory-panel.mobile-table-mode .table-scroll {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    touch-action: pan-x pan-y;
+  }
+  .directory-panel .matrix-table {width: max-content; min-width: 100%;}
+  .directory-panel .matrix-table .name-col,
+  .directory-panel .matrix-table th.name-col {min-width: 155px; max-width: 190px; position: static; left: auto;}
+  .directory-panel .matrix-table .actions-col,
+  .directory-panel .matrix-table th.actions-col {position: static; right: auto; min-width: 94px;}
+  .directory-panel .matrix-table .amount-col {min-width: 145px;}
+  .directory-panel .matrix-table .select-col {min-width: 38px; padding-left: 12px !important; padding-right: 4px !important;}
+  .directory-panel .matrix-table .number-col {min-width: 33px;}
+  .directory-panel .matrix-table th,
+  .directory-panel .matrix-table td {padding-inline: 9px;}
+
+  /* One row for page-size, one for navigation; no orphaned pagination buttons. */
+  .directory-footer .pagination-toolbar {display: flex; justify-content: flex-start; gap: 7px; flex-wrap: wrap; width: 100%;}
+  .directory-footer .rows-per-page {width: 100%; margin-right: 0; margin-bottom: 2px;}
+  .directory-footer .page-current {align-self: center;}
+  .directory-footer .pagination-summary {line-height: 1.45;}
+}
+@media (max-width: 370px) {
+  .topbar {gap: 8px; padding-inline: 12px;}
+  .topbar .crumb {gap: 7px;}
+  .topbar .brand-identity-mobile .brainserve-wordmark {max-width: 116px;}
+  .directory-panel .grid-toolbar-right {column-gap: 5px;}
+  .mobile-card-header {gap: 7px; padding: 10px;}
+  .mobile-card-actions button {width: 31px; height: 31px;}
+}
+@media print {
+  .mobile-view-switch, .mobile-record-cards, .mobile-table-hint {display: none !important;}
+  .directory-panel .table-scroll {display: block !important;}
+}
