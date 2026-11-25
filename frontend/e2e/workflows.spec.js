@@ -44,20 +44,10 @@ async function addRecord(page,name,course,amount) {
   await dlg.getByLabel('Institute name').fill(name);
   if(course)await dlg.getByLabel(course).fill(amount);
   await dlg.getByRole('button',{name:'Add Institute'}).click();
-  // Mobile defaults to a complete card view; desktop retains the original table.
+  // On mobile, records are browsed as a list rather than table rows.
   const mobile = await page.evaluate(() => matchMedia('(max-width: 720px)').matches);
   if (mobile) {
-    const card = page.locator('.mobile-record-card').filter({hasText:name});
-    await expect(card).toBeVisible();
-    if (course) {
-      const field = card.locator('.mobile-card-field').filter({hasText:course});
-      await expect(field).toBeVisible();
-      // Compare numeric values so a database-normalized '30' and '30.00' both pass.
-      await expect.poll(async () => {
-        const displayed = await field.locator('.cell-value b').textContent();
-        return Number((displayed || '').replaceAll(',', ''));
-      }).toBe(Number(amount));
-    }
+    await expect(page.getByRole('button',{name:`View courses for ${name}`})).toBeVisible();
   } else {
     await expect(page.getByRole('row').filter({hasText:name})).toBeVisible();
     if (course) await expect(page.getByRole('columnheader',{name:course, exact:true})).toBeVisible();
@@ -167,6 +157,7 @@ test('real browser: login, section/column/record CRUD, cell/bulk edit, CSV/PDF, 
 });
 
 test('real mobile browser: image-backed login, navigation, add/edit and no horizontal viewport overflow',async({page})=>{
+  test.setTimeout(90000);
   await page.setViewportSize({width:390,height:844});
   await page.goto('/');
   await expect(page.locator('.auth-showcase')).toBeVisible();
@@ -180,14 +171,39 @@ test('real mobile browser: image-backed login, navigation, add/edit and no horiz
   try {
     await makeSection(page,section);
     await addColumn(page,'Mobile Course');
+    for (let index=1;index<=5;index++) await addColumn(page,`Extra Course ${index}`);
     await addRecord(page,'Mobile Institute','Mobile Course','30.00');
 
-    // Every course/value must be accessible without a horizontally clipped table.
-    const recordCard=page.locator('.mobile-record-card').filter({hasText:'Mobile Institute'});
-    await expect(recordCard).toContainText('Mobile Course');
-    await expect(recordCard).toContainText('30.00');
+    // The institute list shows one compact entry instead of a cramped row.
+    const instituteButton=page.getByRole('button',{name:'View courses for Mobile Institute'});
+    await expect(instituteButton).toBeVisible();
+    await instituteButton.click();
+    const courseDetail=page.getByRole('region',{name:'Courses for Mobile Institute'});
+    await expect(courseDetail).toBeVisible();
+    // Six courses render five initially, with a working progressive disclosure.
+    await expect(courseDetail.locator('.mobile-course-row')).toHaveCount(5);
+    await page.getByRole('button',{name:/Show more/}).click();
+    await expect(courseDetail.locator('.mobile-course-row')).toHaveCount(6);
+    const courseRow=courseDetail.locator('.mobile-course-row').filter({hasText:'Mobile Course'});
+    await expect(courseRow).toBeVisible();
+    await expect.poll(async()=>Number((await courseRow.locator('.cell-value b').textContent()||'').replaceAll(',',''))).toBe(30);
 
-    // The desktop Administrator badge must not overlap the logo on phones.
+    // Course search is separate from the institute search.
+    await page.getByRole('textbox',{name:'Search courses'}).fill('not-a-real-course');
+    await expect(courseDetail.locator('.mobile-course-row')).toHaveCount(0);
+    await page.getByRole('textbox',{name:'Search courses'}).fill('Mobile Course');
+    await expect(courseRow).toBeVisible();
+    await page.getByRole('combobox',{name:'Sort courses'}).selectOption('high');
+    await expect(courseRow).toBeVisible();
+
+    // Inline editing still uses the existing secure cell-save API.
+    await courseRow.locator('.cell-value').click();
+    const editAmount=courseRow.getByRole('textbox',{name:'Edit amount'});
+    await editAmount.fill('45.00');
+    await editAmount.press('Enter');
+    await expect.poll(async()=>Number((await courseRow.locator('.cell-value b').textContent()||'').replaceAll(',',''))).toBe(45);
+
+    // Mobile branding must not overlap the profile avatar.
     await expect(page.locator('.topbar .session-pill')).toBeHidden();
     const header=await page.evaluate(()=>{
       const brand=document.querySelector('.topbar .mobile-home-brand').getBoundingClientRect();
@@ -196,15 +212,14 @@ test('real mobile browser: image-backed login, navigation, add/edit and no horiz
     });
     expect(header.brandRight).toBeLessThan(header.avatarLeft);
 
-    // Switch to the mobile table. Course values and action controls must be reachable.
+    // Return to institute list and preserve optional full-table mode.
+    await page.getByRole('button',{name:'Back to institutes'}).click();
+    await expect(instituteButton).toBeVisible();
     await page.getByRole('button',{name:'Table',exact:true}).click();
     await expect(page.locator('.directory-panel.mobile-table-mode .table-scroll')).toBeVisible();
     await expect(page.getByRole('columnheader',{name:'Mobile Course'})).toBeVisible();
-    const table=page.locator('.directory-panel.mobile-table-mode .table-scroll');
-    const horizontal=await table.evaluate(element=>({width:element.clientWidth,scrollWidth:element.scrollWidth}));
-    expect(horizontal.scrollWidth).toBeGreaterThanOrEqual(horizontal.width);
-    await page.getByRole('button',{name:'Cards',exact:true}).click();
-    await expect(recordCard).toBeVisible();
+    await page.getByRole('button',{name:'List',exact:true}).click();
+    await expect(instituteButton).toBeVisible();
 
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2);
     expect(overflow).toBe(false);
